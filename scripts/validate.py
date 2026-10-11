@@ -50,11 +50,16 @@ def err(msg: str) -> None:
 
 def load_json(path: Path) -> dict | None:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         err(f"{path.relative_to(ROOT)}: file not found")
     except json.JSONDecodeError as e:
         err(f"{path.relative_to(ROOT)}: invalid JSON: {e}")
+    else:
+        if not isinstance(value, dict):
+            err(f"{path.relative_to(ROOT)}: top-level JSON value must be an object")
+            return None
+        return value
     return None
 
 
@@ -134,9 +139,12 @@ def main() -> int:
 
     for i, entry in enumerate(entries):
         label = f"marketplace.json plugins[{i}]"
+        if not isinstance(entry, dict):
+            err(f"{label}: must be an object")
+            continue
         name = entry.get("name")
-        if not name:
-            err(f"{label}: missing 'name'")
+        if not isinstance(name, str) or not name:
+            err(f"{label}: 'name' must be a non-empty string")
             continue
         label = f"{label} ({name})"
 
@@ -147,18 +155,19 @@ def main() -> int:
         seen.add(name)
 
         for field in ("source", "description", "version"):
-            if not entry.get(field):
-                err(f"{label}: missing '{field}'")
+            value = entry.get(field)
+            if not isinstance(value, str) or not value.strip():
+                err(f"{label}: '{field}' must be a non-empty string")
         validate_i18n(label, entry, "description_i18n", ("en", "zh-CN"))
 
         version = entry.get("version", "")
-        if version and not SEMVER.match(version):
+        if isinstance(version, str) and version and not SEMVER.match(version):
             err(f"{label}: version '{version}' is not semver (X.Y.Z)")
 
         category = entry.get("category")
         if not category:
             err(f"{label}: missing 'category'")
-        elif category not in CATEGORIES:
+        elif not isinstance(category, str) or category not in CATEGORIES:
             err(
                 f"{label}: category '{category}' not in allowed set "
                 f"({', '.join(sorted(CATEGORIES))}); propose new categories via PR"
